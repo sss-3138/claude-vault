@@ -11,7 +11,7 @@
 
 Usage:
     python war_council.py "テーマ"
-    python war_council.py "テーマ" --model claude-sonnet-4-20250514
+    python war_council.py "テーマ" --model claude-sonnet-4-5-20250929
     python war_council.py "テーマ" --dry-run
 """
 
@@ -44,7 +44,7 @@ FLOOR_TENSHUKAKU = CASTLE_FLOORS / "05_tenshukaku"
 FLOOR_GALLERY = CASTLE_FLOORS / "06_gallery"
 
 # デフォルトモデル
-DEFAULT_MODEL = "claude-sonnet-4-20250514"
+DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
 
 # ログ用の色（ANSI）
 class Color:
@@ -78,6 +78,13 @@ class Phase(Enum):
 # エージェント定義
 # ---------------------------------------------------------------------------
 
+class VaultContext(Enum):
+    """Vault コンテキスト注入レベル"""
+    FULL = "full"            # Strategy + Template + Assets（戦略・構成・執筆エージェント用）
+    STRATEGY_ONLY = "strategy"  # Strategy.md のみ（品質監査・リライトエージェント用）
+    NONE = "none"            # 注入なし（形式処理エージェント用）
+
+
 @dataclass
 class Agent:
     """家臣団のメンバー定義"""
@@ -90,6 +97,9 @@ class Agent:
     output_file: str = ""
     output_dir: Path = FLOOR_STRATEGY
     phase: Phase = Phase.STRATEGY
+    max_tokens: int = 8192
+    temperature: float = 0.7
+    vault_context: VaultContext = VaultContext.NONE
 
     @property
     def prompt_path(self) -> Path:
@@ -107,6 +117,15 @@ class Agent:
 
 
 # 家臣団の定義（実行順序通り）
+#
+# max_tokens / temperature / vault_context の設計方針:
+#   - レポート系エージェント（01-06, 08, 10）: 8192 tokens で十分
+#   - 記事全文を出力するエージェント（07, 09, 11, 13, 12）: 16384 tokens
+#   - 正確性重視（05,08,10,12）: 低温度 (0.3-0.5)
+#   - 創造性重視（01,07,13）: 高温度 (0.7)
+#   - Strategy.mdを参照すべきエージェント: FULL or STRATEGY_ONLY
+#   - 形式処理のみのエージェント: NONE
+#
 RETAINERS = [
     Agent(
         number=1, name_jp="軍師", name_en="Gunshi",
@@ -116,6 +135,9 @@ RETAINERS = [
         output_file="persona.md",
         output_dir=FLOOR_STRATEGY,
         phase=Phase.STRATEGY,
+        max_tokens=8192,
+        temperature=0.7,
+        vault_context=VaultContext.FULL,
     ),
     Agent(
         number=2, name_jp="乱波・忍", name_en="Shinobi",
@@ -125,6 +147,9 @@ RETAINERS = [
         output_file="keywords.md",
         output_dir=FLOOR_STRATEGY,
         phase=Phase.STRATEGY,
+        max_tokens=8192,
+        temperature=0.5,
+        vault_context=VaultContext.FULL,
     ),
     Agent(
         number=3, name_jp="物見", name_en="Monomi",
@@ -134,6 +159,9 @@ RETAINERS = [
         output_file="serp_analysis.md",
         output_dir=FLOOR_STRATEGY,
         phase=Phase.STRATEGY,
+        max_tokens=8192,
+        temperature=0.5,
+        vault_context=VaultContext.FULL,
     ),
     Agent(
         number=4, name_jp="作事奉行", name_en="Sakuji",
@@ -147,6 +175,9 @@ RETAINERS = [
         output_file="structure_draft.md",
         output_dir=FLOOR_BLUEPRINT,
         phase=Phase.STRUCTURE,
+        max_tokens=8192,
+        temperature=0.7,
+        vault_context=VaultContext.FULL,
     ),
     Agent(
         number=5, name_jp="目付", name_en="Metsuke",
@@ -159,6 +190,9 @@ RETAINERS = [
         output_file="structure_fixed.md",
         output_dir=FLOOR_BLUEPRINT,
         phase=Phase.STRUCTURE,
+        max_tokens=8192,
+        temperature=0.3,
+        vault_context=VaultContext.STRATEGY_ONLY,
     ),
     Agent(
         number=6, name_jp="儒学者", name_en="Jugakusha",
@@ -168,6 +202,9 @@ RETAINERS = [
         output_file="fact_sheet.md",
         output_dir=FLOOR_LIBRARY,
         phase=Phase.DRAFTING,
+        max_tokens=8192,
+        temperature=0.5,
+        vault_context=VaultContext.NONE,
     ),
     Agent(
         number=7, name_jp="右筆", name_en="Yuhitsu",
@@ -180,6 +217,9 @@ RETAINERS = [
         output_file="draft_v1.md",
         output_dir=FLOOR_WRITING,
         phase=Phase.DRAFTING,
+        max_tokens=16384,
+        temperature=0.7,
+        vault_context=VaultContext.FULL,
     ),
     Agent(
         number=8, name_jp="御意見番", name_en="Goikenban",
@@ -192,6 +232,9 @@ RETAINERS = [
         output_file="critique_report.md",
         output_dir=FLOOR_WRITING,
         phase=Phase.DRAFTING,
+        max_tokens=8192,
+        temperature=0.3,
+        vault_context=VaultContext.STRATEGY_ONLY,
     ),
     Agent(
         number=9, name_jp="代筆", name_en="Daihitsu",
@@ -204,6 +247,9 @@ RETAINERS = [
         output_file="draft_v2.md",
         output_dir=FLOOR_WRITING,
         phase=Phase.DRAFTING,
+        max_tokens=16384,
+        temperature=0.5,
+        vault_context=VaultContext.STRATEGY_ONLY,
     ),
     Agent(
         number=10, name_jp="勘定方", name_en="Kanjyo",
@@ -213,6 +259,9 @@ RETAINERS = [
         output_file="count_report.md",
         output_dir=FLOOR_WRITING,
         phase=Phase.POLISHING,
+        max_tokens=4096,
+        temperature=0.3,
+        vault_context=VaultContext.NONE,
     ),
     Agent(
         number=11, name_jp="公文書係", name_en="Kobunsho",
@@ -225,6 +274,9 @@ RETAINERS = [
         output_file="draft_v3_linked.md",
         output_dir=FLOOR_WRITING,
         phase=Phase.POLISHING,
+        max_tokens=16384,
+        temperature=0.3,
+        vault_context=VaultContext.NONE,
     ),
     Agent(
         number=13, name_jp="絵師", name_en="Eshi",
@@ -234,6 +286,9 @@ RETAINERS = [
         output_file="draft_v4_visuals.md",
         output_dir=FLOOR_WRITING,
         phase=Phase.POLISHING,
+        max_tokens=16384,
+        temperature=0.7,
+        vault_context=VaultContext.NONE,
     ),
     Agent(
         number=12, name_jp="城代", name_en="Joudai",
@@ -243,6 +298,9 @@ RETAINERS = [
         output_file="final_draft.md",
         output_dir=FLOOR_TENSHUKAKU,
         phase=Phase.GATEKEEPING,
+        max_tokens=16384,
+        temperature=0.3,
+        vault_context=VaultContext.STRATEGY_ONLY,
     ),
 ]
 
@@ -463,30 +521,38 @@ class WarCouncil:
         ]:
             floor.mkdir(parents=True, exist_ok=True)
 
-    def _load_vault_context(self) -> str:
-        """Vault内の戦略・テンプレート情報を読み込む"""
+    def _load_vault_context(self, level: VaultContext) -> str:
+        """
+        Vault内の戦略・テンプレート情報を読み込む。
+
+        Args:
+            level: FULL=全コンテキスト, STRATEGY_ONLY=Strategy.mdのみ, NONE=空文字
+        """
+        if level == VaultContext.NONE:
+            return ""
+
         context_parts = []
 
-        # Strategy.md
+        # Strategy.md（FULL / STRATEGY_ONLY 共通）
         strategy_path = self.vault_root / "Strategy" / "Strategy.md"
         if strategy_path.exists():
             context_parts.append(
                 f"## Strategy.md（執筆戦略ガイド）\n\n{strategy_path.read_text(encoding='utf-8')}"
             )
 
-        # Article Template
-        article_path = self.vault_root / "Templates" / "Article.md"
-        if article_path.exists():
-            context_parts.append(
-                f"## Article Template\n\n{article_path.read_text(encoding='utf-8')}"
-            )
+        # FULL の場合のみ Template + Assets を追加
+        if level == VaultContext.FULL:
+            article_path = self.vault_root / "Templates" / "Article.md"
+            if article_path.exists():
+                context_parts.append(
+                    f"## Article Template\n\n{article_path.read_text(encoding='utf-8')}"
+                )
 
-        # Assets
-        assets_path = self.vault_root / "Assets" / "Assets.md"
-        if assets_path.exists():
-            context_parts.append(
-                f"## Assets（表現集）\n\n{assets_path.read_text(encoding='utf-8')}"
-            )
+            assets_path = self.vault_root / "Assets" / "Assets.md"
+            if assets_path.exists():
+                context_parts.append(
+                    f"## Assets（表現集）\n\n{assets_path.read_text(encoding='utf-8')}"
+                )
 
         return "\n\n---\n\n".join(context_parts)
 
@@ -503,11 +569,10 @@ class WarCouncil:
             else:
                 parts.append(f"## 参照資料: {input_rel}\n\n（※ファイル未作成）")
 
-        # Vault戦略コンテキスト（最初のエージェントには必ず付与）
-        if agent.number <= 4:
-            vault_ctx = self._load_vault_context()
-            if vault_ctx:
-                parts.append(f"## Vault 戦略コンテキスト\n\n{vault_ctx}")
+        # Vault戦略コンテキスト（エージェントの設定に従って注入）
+        vault_ctx = self._load_vault_context(agent.vault_context)
+        if vault_ctx:
+            parts.append(f"## Vault 戦略コンテキスト\n\n{vault_ctx}")
 
         return "\n\n---\n\n".join(parts)
 
@@ -555,12 +620,12 @@ class WarCouncil:
             # ユーザーメッセージ構築
             user_message = self._build_user_message(agent)
 
-            # API呼び出し
+            # API呼び出し（エージェント個別の max_tokens / temperature を使用）
             response = self.api.call_agent(
                 system_prompt=system_prompt,
                 user_message=user_message,
-                max_tokens=8192,
-                temperature=0.7,
+                max_tokens=agent.max_tokens,
+                temperature=agent.temperature,
             )
 
             # 出力を保存
@@ -657,8 +722,8 @@ class WarCouncil:
             response = self.api.call_agent(
                 system_prompt=system_prompt,
                 user_message=user_message,
-                max_tokens=8192,
-                temperature=0.3,  # 最終確認は低温度で
+                max_tokens=16384,  # 完全な記事を出力するため大きめに
+                temperature=0.3,   # 最終確認は低温度で
             )
 
             # FINAL_ARTICLE として保存
@@ -727,7 +792,7 @@ def main():
         epilog="""
 例:
   python war_council.py "AIエージェントの最新動向"
-  python war_council.py "リモートワークの生産性向上" --model claude-sonnet-4-20250514
+  python war_council.py "リモートワークの生産性向上" --model claude-sonnet-4-5-20250929
   python war_council.py "テスト実行" --dry-run
         """,
     )
