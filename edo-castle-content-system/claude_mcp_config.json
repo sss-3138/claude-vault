@@ -1,0 +1,82 @@
+{
+  "mcpServers": {
+    "katana-search": {
+      "command": "node",
+      "args": ["skills/katana-search/index.js"],
+      "description": "刀検索 — Web検索 & スクレイピングツール",
+      "env": {
+        "GOOGLE_CSE_API_KEY": "${GOOGLE_CSE_API_KEY}",
+        "GOOGLE_CSE_ID": "${GOOGLE_CSE_ID}",
+        "BRAVE_SEARCH_API_KEY": "${BRAVE_SEARCH_API_KEY}"
+      },
+      "tools": [
+        {
+          "name": "web_search",
+          "description": "指定キーワードでWeb検索を行い、上位結果を返す",
+          "parameters": {
+            "query": {
+              "type": "string",
+              "description": "検索クエリ"
+            },
+            "num_results": {
+              "type": "integer",
+              "description": "取得件数（デフォルト: 10）",
+              "default": 10
+            }
+          }
+        },
+        {
+          "name": "scrape_url",
+          "description": "指定URLのページ内容をスクレイピングしてテキスト抽出する",
+          "parameters": {
+            "url": {
+              "type": "string",
+              "description": "対象URL"
+            },
+            "extract": {
+              "type": "string",
+              "description": "抽出対象（headings / body / all）",
+              "default": "all"
+            }
+          }
+        }
+      ]
+    },
+    "fude-canvas": {
+      "command": "node",
+      "args": ["skills/fude-canvas/index.js"],
+      "description": "筆キャンバス — 画像生成ツール (Imagen 3 / DALL-E 3)",
+      "env": {
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+        "GOOGLE_PROJECT_ID": "${GOOGLE_PROJECT_ID}",
+        "GOOGLE_LOCATION": "${GOOGLE_LOCATION}"
+      },
+      "tools": [
+        {
+          "name": "generate_image",
+          "description": "プロンプトから画像を生成する",
+          "parameters": {
+            "prompt": {
+              "type": "string",
+              "description": "画像生成プロンプト（英語推奨）"
+            },
+            "style": {
+              "type": "string",
+              "description": "スタイル（photo / illustration / diagram）",
+              "default": "illustration"
+            },
+            "size": {
+              "type": "string",
+              "description": "サイズ（1024x1024 / 1792x1024 / 1024x1792）",
+              "default": "1792x1024"
+            },
+            "output_path": {
+              "type": "string",
+              "description": "保存先パス"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
